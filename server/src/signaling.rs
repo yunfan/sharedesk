@@ -480,6 +480,9 @@ fn render_room_page(room: &str) -> String {
           <span>Backend URL</span>
           <input id="backend-url" autocomplete="off" maxlength="256" placeholder="https://share.example.com/backend">
         </div>
+        <div class="field checkbox-field">
+          <label><input id="use-turn" type="checkbox" checked> Use TURN relay candidates</label>
+        </div>
         <div class="role-grid">
           <label><input type="radio" name="role" value="host"> Host</label>
           <label><input type="radio" name="role" value="viewer"> Viewer</label>
@@ -506,6 +509,8 @@ fn render_room_page(room: &str) -> String {
           </ul>
           <h2>Participants</h2>
           <div id="participants" class="participants"></div>
+          <h2>Connection status</h2>
+          <div id="connection-stats" class="participants"></div>
           <h2>Room notes</h2>
           <ul class="notes">
             <li>Single host per room.</li>

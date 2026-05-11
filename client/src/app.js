@@ -12,9 +12,11 @@ const roleInputs = [...document.querySelectorAll('input[name="role"]')];
 const remoteVideo = document.getElementById("remote-video");
 const localPreview = document.getElementById("local-preview");
 const participantsEl = document.getElementById("participants");
+const connectionStatsEl = document.getElementById("connection-stats");
 const displayNameInput = document.getElementById("display-name");
 const joinPasswordInput = document.getElementById("join-password");
 const backendUrlInput = document.getElementById("backend-url");
+const useTurnInput = document.getElementById("use-turn");
 
 let socket;
 let selfId;
@@ -27,7 +29,9 @@ const peers = new Map();
 const CLIENT_TOKEN_KEY = "rustdesk-share-client-token";
 const DISPLAY_NAME_KEY = "rustdesk-share-display-name";
 const BACKEND_URL_KEY = "rustdesk-share-backend-url";
+const USE_TURN_KEY = "rustdesk-share-use-turn";
 const DEFAULT_BACKEND_URL = window.__ROOM_CONFIG__?.VITE_BACKEND_URL || "";
+let statsTimer = null;
 
 for (const input of roleInputs) {
   input.checked = input.value === initialRole;
@@ -35,6 +39,7 @@ for (const input of roleInputs) {
 
 displayNameInput.value = localStorage.getItem(DISPLAY_NAME_KEY) || "";
 backendUrlInput.value = localStorage.getItem(BACKEND_URL_KEY) || DEFAULT_BACKEND_URL || location.origin;
+useTurnInput.checked = localStorage.getItem(USE_TURN_KEY) !== "false";
 
 function log(message) {
   const line = `[${new Date().toLocaleTimeString()}] ${message}`;
@@ -63,6 +68,12 @@ function currentDisplayName() {
   return value;
 }
 
+function shouldUseTurn() {
+  const enabled = useTurnInput.checked;
+  localStorage.setItem(USE_TURN_KEY, enabled ? "true" : "false");
+  return enabled;
+}
+
 function wsUrl() {
   const base = backendBaseUrl();
   const scheme = base.protocol === "https:" ? "wss" : "ws";
@@ -89,6 +100,21 @@ function backendBaseUrl() {
   localStorage.setItem(BACKEND_URL_KEY, normalized);
   backendUrlInput.value = normalized;
   return url;
+}
+
+function filteredIceServers(servers) {
+  if (shouldUseTurn()) {
+    return servers;
+  }
+
+  return (servers || [])
+    .map((server) => ({
+      ...server,
+      urls: (server.urls || []).filter(
+        (url) => !url.startsWith("turn:") && !url.startsWith("turns:")
+      ),
+    }))
+    .filter((server) => server.urls.length > 0);
 }
 
 function renderParticipants() {
@@ -133,6 +159,39 @@ function renderParticipants() {
   }
 }
 
+function renderConnectionStats() {
+  const cards = [...peers.values()].map((peer) => {
+    const stats = peer.stats;
+    if (!stats) {
+      return `
+        <article class="participant-card">
+          <div class="participant-title">${escapeHtml(peer.display_name || peer.peer_id)}</div>
+          <div class="participant-meta">Gathering connection stats…</div>
+        </article>
+      `;
+    }
+
+    const mode = stats.relay
+      ? `TURN relay via ${escapeHtml(stats.turnServer || "unknown relay")}`
+      : "P2P direct";
+    const path = stats.relay
+      ? `<div class="participant-mono">relay peer ${escapeHtml(stats.remote || "unknown")}</div>`
+      : `<div class="participant-mono">local ${escapeHtml(stats.local || "unknown")} -> remote ${escapeHtml(stats.remote || "unknown")}</div>`;
+
+    return `
+      <article class="participant-card">
+        <div class="participant-title">${escapeHtml(peer.display_name || peer.peer_id)}</div>
+        <div class="participant-meta">${mode}</div>
+        ${path}
+        <div class="participant-meta">Send ${stats.sendRate} | Receive ${stats.receiveRate}</div>
+      </article>
+    `;
+  });
+
+  connectionStatsEl.innerHTML =
+    cards.join("") || `<p class="participant-empty">No active peer connections.</p>`;
+}
+
 copyBtn.onclick = async () => {
   await navigator.clipboard.writeText(viewerLink());
   log("Viewer link copied.");
@@ -163,6 +222,12 @@ backendUrlInput.onchange = () => {
   backendBaseUrl();
 };
 
+useTurnInput.onchange = () => {
+  const enabled = shouldUseTurn();
+  iceServers = filteredIceServers(iceServers);
+  log(enabled ? "TURN relay candidates enabled." : "TURN relay candidates disabled.");
+};
+
 shareBtn.onclick = async () => {
   await startScreenCapture();
   for (const [peerId] of peers) {
@@ -178,6 +243,7 @@ async function connect() {
   cleanupPeers();
   peers.clear();
   renderParticipants();
+  renderConnectionStats();
 
   socket = new WebSocket(wsUrl());
   socket.onopen = () => log("Connected to signaling server.");
@@ -195,7 +261,7 @@ async function handleServerEvent(message) {
       selfId = message.peer_id;
       selfDisplayName = message.self_display_name;
       displayNameInput.value = selfDisplayName;
-      iceServers = message.ice_servers || [];
+      iceServers = filteredIceServers(message.ice_servers || []);
       hostPeerDetails = message.host_peer_details || [];
       shareBtn.disabled = selectedRole() !== "host";
       setPasswordBtn.disabled = selectedRole() !== "host";
@@ -203,6 +269,7 @@ async function handleServerEvent(message) {
         upsertPeer(peer);
       }
       renderParticipants();
+      renderConnectionStats();
       log(`Joined room as ${message.role}. Password protected: ${message.password_protected}.`);
       break;
     case "peer_joined":
@@ -218,6 +285,7 @@ async function handleServerEvent(message) {
       destroyPeer(message.peer_id);
       peers.delete(message.peer_id);
       renderParticipants();
+      renderConnectionStats();
       break;
     case "peer_updated":
       upsertPeer(message.peer);
@@ -249,7 +317,7 @@ function upsertPeer(peer) {
   if (peer.peer_id === selfId) {
     return;
   }
-  const current = peers.get(peer.peer_id) || { pc: null, stream: null };
+  const current = peers.get(peer.peer_id) || { pc: null, stream: null, stats: null, statsSnapshot: null };
   peers.set(peer.peer_id, { ...current, ...peer });
 }
 
@@ -352,6 +420,7 @@ async function ensurePeerConnection(peerId) {
     }
   };
 
+  startStatsPolling();
   return pc;
 }
 
@@ -471,12 +540,148 @@ function destroyPeer(peerId) {
   if (remoteVideo.srcObject === entry.stream) {
     remoteVideo.srcObject = null;
   }
+  renderConnectionStats();
 }
 
 function cleanupPeers() {
   for (const peerId of [...peers.keys()]) {
     destroyPeer(peerId);
   }
+}
+
+function startStatsPolling() {
+  if (statsTimer) {
+    return;
+  }
+  statsTimer = setInterval(pollPeerStats, 2000);
+}
+
+async function pollPeerStats() {
+  let active = false;
+  for (const [peerId, entry] of peers.entries()) {
+    if (!entry.pc) {
+      continue;
+    }
+    active = true;
+    entry.stats = await collectPeerStats(entry.pc, entry.statsSnapshot);
+    entry.statsSnapshot = entry.stats?.snapshot || entry.statsSnapshot;
+    peers.set(peerId, entry);
+  }
+
+  renderConnectionStats();
+
+  if (!active && statsTimer) {
+    clearInterval(statsTimer);
+    statsTimer = null;
+  }
+}
+
+async function collectPeerStats(pc, previousSnapshot) {
+  try {
+    const report = await pc.getStats();
+    const stats = {
+      relay: false,
+      turnServer: null,
+      local: null,
+      remote: null,
+      sendRate: "0 bps",
+      receiveRate: "0 bps",
+      snapshot: {
+        timestamp: Date.now(),
+        outboundBytes: 0,
+        inboundBytes: 0,
+      },
+    };
+
+    let selectedPair = null;
+    let outboundBytes = 0;
+    let inboundBytes = 0;
+
+    report.forEach((item) => {
+      if (
+        (item.type === "transport" || item.type === "candidate-pair") &&
+        (item.selectedCandidatePairId || item.nominated || item.selected)
+      ) {
+        if (item.selectedCandidatePairId) {
+          selectedPair = report.get(item.selectedCandidatePairId);
+        } else if (!selectedPair && (item.nominated || item.selected)) {
+          selectedPair = item;
+        }
+      }
+
+      if (item.type === "outbound-rtp" && !item.isRemote) {
+        outboundBytes += item.bytesSent || 0;
+      }
+
+      if (item.type === "inbound-rtp" && !item.isRemote) {
+        inboundBytes += item.bytesReceived || 0;
+      }
+    });
+
+    if (selectedPair) {
+      const local = report.get(selectedPair.localCandidateId);
+      const remote = report.get(selectedPair.remoteCandidateId);
+      stats.local = formatCandidateAddress(local);
+      stats.remote = formatCandidateAddress(remote);
+      stats.relay =
+        local?.candidateType === "relay" || remote?.candidateType === "relay";
+      stats.turnServer = local?.url || remote?.url || null;
+    }
+
+    stats.snapshot.outboundBytes = outboundBytes;
+    stats.snapshot.inboundBytes = inboundBytes;
+
+    if (previousSnapshot) {
+      const seconds = Math.max(
+        1,
+        (stats.snapshot.timestamp - previousSnapshot.timestamp) / 1000
+      );
+      stats.sendRate = formatBitrate(
+        ((outboundBytes - previousSnapshot.outboundBytes) * 8) / seconds
+      );
+      stats.receiveRate = formatBitrate(
+        ((inboundBytes - previousSnapshot.inboundBytes) * 8) / seconds
+      );
+    }
+
+    return stats;
+  } catch {
+    return {
+      relay: false,
+      turnServer: null,
+      local: "unavailable",
+      remote: "unavailable",
+      sendRate: "n/a",
+      receiveRate: "n/a",
+      snapshot: previousSnapshot || {
+        timestamp: Date.now(),
+        outboundBytes: 0,
+        inboundBytes: 0,
+      },
+    };
+  }
+}
+
+function formatCandidateAddress(candidate) {
+  if (!candidate) {
+    return null;
+  }
+  const ip = candidate.address || candidate.ip || "unknown";
+  const port = candidate.port || "unknown";
+  return `${ip}:${port}`;
+}
+
+function formatBitrate(bitsPerSecond) {
+  if (!Number.isFinite(bitsPerSecond) || bitsPerSecond <= 0) {
+    return "0 bps";
+  }
+  if (bitsPerSecond >= 1_000_000) {
+    return `${(bitsPerSecond / 1_000_000).toFixed(2)} Mbps`;
+  }
+  if (bitsPerSecond >= 1_000) {
+    return `${(bitsPerSecond / 1_000).toFixed(1)} Kbps`;
+  }
+  return `${Math.round(bitsPerSecond)} bps`;
 }
 
 function escapeHtml(value) {
@@ -489,4 +694,5 @@ function escapeHtml(value) {
 
 log(`Viewer link: ${viewerLink()}`);
 renderParticipants();
+renderConnectionStats();
 connect();
