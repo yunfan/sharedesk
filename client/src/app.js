@@ -1,6 +1,21 @@
+const CLIENT_TOKEN_KEY = "rustdesk-share-client-token";
+const DISPLAY_NAME_KEY = "rustdesk-share-display-name";
+const BACKEND_URL_KEY = "rustdesk-share-backend-url";
+const USE_TURN_KEY = "rustdesk-share-use-turn";
+const DEFAULT_BACKEND_URL = window.__ROOM_CONFIG__?.VITE_BACKEND_URL || "/backend";
+
 const room = resolveRoomId();
+const isRoomPage = Boolean(room);
 const params = new URLSearchParams(location.search);
 const initialRole = params.get("role") === "host" ? "host" : "viewer";
+
+const landingView = document.getElementById("landing-view");
+const roomView = document.getElementById("room-view");
+const roomForm = document.getElementById("room-form");
+const landingRoomIdInput = document.getElementById("landing-room-id");
+const landingDisplayNameInput = document.getElementById("landing-display-name");
+const landingBackendUrlInput = document.getElementById("landing-backend-url");
+const landingUseTurnInput = document.getElementById("landing-use-turn");
 
 const statusEl = document.getElementById("status");
 const logEl = document.getElementById("log");
@@ -26,28 +41,117 @@ let iceServers = [];
 let localStream = null;
 let hostPeerDetails = [];
 const peers = new Map();
-
-const CLIENT_TOKEN_KEY = "rustdesk-share-client-token";
-const DISPLAY_NAME_KEY = "rustdesk-share-display-name";
-const BACKEND_URL_KEY = "rustdesk-share-backend-url";
-const USE_TURN_KEY = "rustdesk-share-use-turn";
-const DEFAULT_BACKEND_URL = window.__ROOM_CONFIG__?.VITE_BACKEND_URL || "";
 let statsTimer = null;
 
-for (const input of roleInputs) {
-  input.checked = input.value === initialRole;
+if (landingDisplayNameInput) {
+  landingDisplayNameInput.value = localStorage.getItem(DISPLAY_NAME_KEY) || "";
+}
+if (landingBackendUrlInput) {
+  landingBackendUrlInput.value =
+    localStorage.getItem(BACKEND_URL_KEY) || DEFAULT_BACKEND_URL || `${location.origin}/backend`;
+}
+if (landingUseTurnInput) {
+  landingUseTurnInput.checked = localStorage.getItem(USE_TURN_KEY) !== "false";
 }
 
-displayNameInput.value = localStorage.getItem(DISPLAY_NAME_KEY) || "";
-backendUrlInput.value = localStorage.getItem(BACKEND_URL_KEY) || DEFAULT_BACKEND_URL || location.origin;
-useTurnInput.checked = localStorage.getItem(USE_TURN_KEY) !== "false";
-document.body.dataset.room = room;
-roomTitleEl.textContent = room;
+if (isRoomPage) {
+  bootRoomPage();
+} else {
+  bootLandingPage();
+}
+
+function bootLandingPage() {
+  landingView.hidden = false;
+  roomView.hidden = true;
+
+  roomForm?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const nextRoom = normalizeRoomId(landingRoomIdInput.value) || randomRoomId();
+    const backend = normalizeBackendUrl(landingBackendUrlInput.value);
+    const name = landingDisplayNameInput.value.trim();
+    localStorage.setItem(BACKEND_URL_KEY, backend);
+    localStorage.setItem(USE_TURN_KEY, landingUseTurnInput.checked ? "true" : "false");
+    if (name) {
+      localStorage.setItem(DISPLAY_NAME_KEY, name);
+    }
+    const nextUrl = new URL(`/room/${encodeURIComponent(nextRoom)}`, location.origin);
+    nextUrl.searchParams.set("role", "host");
+    location.href = nextUrl.toString();
+  });
+}
+
+function bootRoomPage() {
+  landingView.hidden = true;
+  roomView.hidden = false;
+
+  for (const input of roleInputs) {
+    input.checked = input.value === initialRole;
+  }
+
+  displayNameInput.value = localStorage.getItem(DISPLAY_NAME_KEY) || "";
+  backendUrlInput.value =
+    localStorage.getItem(BACKEND_URL_KEY) || DEFAULT_BACKEND_URL || `${location.origin}/backend`;
+  useTurnInput.checked = localStorage.getItem(USE_TURN_KEY) !== "false";
+  document.body.dataset.room = room;
+  roomTitleEl.textContent = room;
+
+  copyBtn.onclick = async () => {
+    await navigator.clipboard.writeText(viewerLink());
+    log("Viewer link copied.");
+  };
+
+  connectBtn.onclick = () => {
+    connect();
+  };
+
+  setPasswordBtn.onclick = () => {
+    send({
+      type: "set_join_password",
+      password: joinPasswordInput.value || null,
+    });
+  };
+
+  displayNameInput.onchange = () => {
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+      return;
+    }
+    send({
+      type: "set_display_name",
+      display_name: displayNameInput.value,
+    });
+  };
+
+  backendUrlInput.onchange = () => {
+    backendBaseUrl();
+  };
+
+  useTurnInput.onchange = () => {
+    const enabled = shouldUseTurn();
+    iceServers = filteredIceServers(iceServers);
+    log(enabled ? "TURN relay candidates enabled." : "TURN relay candidates disabled.");
+  };
+
+  shareBtn.onclick = async () => {
+    await startScreenCapture();
+    for (const [peerId] of peers) {
+      await ensureOffer(peerId);
+    }
+  };
+
+  log(`Viewer link: ${viewerLink()}`);
+  renderParticipants();
+  renderConnectionStats();
+  connect();
+}
 
 function log(message) {
   const line = `[${new Date().toLocaleTimeString()}] ${message}`;
-  logEl.textContent = `${line}\n${logEl.textContent}`.trim();
-  statusEl.textContent = message;
+  if (logEl) {
+    logEl.textContent = `${line}\n${logEl.textContent}`.trim();
+  }
+  if (statusEl) {
+    statusEl.textContent = message;
+  }
 }
 
 function selectedRole() {
@@ -59,7 +163,15 @@ function resolveRoomId() {
   if (pathMatch?.[1]) {
     return decodeURIComponent(pathMatch[1]);
   }
-  return "public";
+  return null;
+}
+
+function normalizeRoomId(value) {
+  return value.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "");
+}
+
+function randomRoomId() {
+  return `room-${Math.random().toString(36).slice(2, 10)}`;
 }
 
 function clientToken() {
@@ -85,6 +197,18 @@ function shouldUseTurn() {
   return enabled;
 }
 
+function normalizeBackendUrl(raw) {
+  const url = new URL(raw.trim() || DEFAULT_BACKEND_URL || `${location.origin}/backend`, location.origin);
+  return url.toString().replace(/\/$/, "");
+}
+
+function backendBaseUrl() {
+  const normalized = normalizeBackendUrl(backendUrlInput.value);
+  localStorage.setItem(BACKEND_URL_KEY, normalized);
+  backendUrlInput.value = normalized;
+  return new URL(normalized);
+}
+
 function wsUrl() {
   const base = backendBaseUrl();
   const scheme = base.protocol === "https:" ? "wss" : "ws";
@@ -102,15 +226,6 @@ function wsUrl() {
 
 function viewerLink() {
   return `${location.origin}/room/${encodeURIComponent(room)}?role=viewer`;
-}
-
-function backendBaseUrl() {
-  const raw = backendUrlInput.value.trim() || DEFAULT_BACKEND_URL || `${location.origin}/backend`;
-  const url = new URL(raw, location.origin);
-  const normalized = url.toString().replace(/\/$/, "");
-  localStorage.setItem(BACKEND_URL_KEY, normalized);
-  backendUrlInput.value = normalized;
-  return url;
 }
 
 function filteredIceServers(servers) {
@@ -202,49 +317,6 @@ function renderConnectionStats() {
   connectionStatsEl.innerHTML =
     cards.join("") || `<p class="participant-empty">No active peer connections.</p>`;
 }
-
-copyBtn.onclick = async () => {
-  await navigator.clipboard.writeText(viewerLink());
-  log("Viewer link copied.");
-};
-
-connectBtn.onclick = () => {
-  connect();
-};
-
-setPasswordBtn.onclick = () => {
-  send({
-    type: "set_join_password",
-    password: joinPasswordInput.value || null,
-  });
-};
-
-displayNameInput.onchange = () => {
-  if (!socket || socket.readyState !== WebSocket.OPEN) {
-    return;
-  }
-  send({
-    type: "set_display_name",
-    display_name: displayNameInput.value,
-  });
-};
-
-backendUrlInput.onchange = () => {
-  backendBaseUrl();
-};
-
-useTurnInput.onchange = () => {
-  const enabled = shouldUseTurn();
-  iceServers = filteredIceServers(iceServers);
-  log(enabled ? "TURN relay candidates enabled." : "TURN relay candidates disabled.");
-};
-
-shareBtn.onclick = async () => {
-  await startScreenCapture();
-  for (const [peerId] of peers) {
-    await ensureOffer(peerId);
-  }
-};
 
 async function connect() {
   if (socket && socket.readyState <= WebSocket.OPEN) {
@@ -696,14 +768,9 @@ function formatBitrate(bitsPerSecond) {
 }
 
 function escapeHtml(value) {
-  return value
+  return String(value)
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;");
 }
-
-log(`Viewer link: ${viewerLink()}`);
-renderParticipants();
-renderConnectionStats();
-connect();

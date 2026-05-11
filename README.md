@@ -183,7 +183,7 @@ docker compose up --build
 
 仓库根目录提供了 [`Caddyfile`](</home/jyf/work/codetool/repo/rust-anon-desktop-share/rustdesk-share/Caddyfile>)，默认把：
 
-- `/`、`/room/*`、`/assets/*` 直接从 `client/dist` 提供
+- `/`、`/room/*` 直接从 `client/dist` 提供
 - `/backend/*` 代理给后端 API 和 WebSocket
 
 把 `share.example.com` 改成你的真实域名即可。
