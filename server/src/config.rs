@@ -16,7 +16,7 @@ const DEFAULT_SERVER_MAXONLINE: usize = 200;
 const DEFAULT_WEB_PUBLICBASE: &str = "";
 const DEFAULT_WEB_STATICDIR: &str = "../client/dist";
 const DEFAULT_WEB_BACKENDBASE: &str = "/backend";
-const DEFAULT_ICE_STUNURLS: &str = "stun:stun.l.google.com:19302";
+const DEFAULT_ICE_STUNURLS: &str = "";
 const DEFAULT_TURN_MODE: &str = "disabled";
 const DEFAULT_TURN_URLS: &str = "";
 const DEFAULT_TURN_USERNAME: &str = "";
@@ -101,7 +101,7 @@ impl Config {
                 )),
             },
             ice: IceConfig {
-                stunurls: csv_string("ROOM_ICE_STUNURLS", DEFAULT_ICE_STUNURLS),
+                stunurls: merge_unique_urls(default_public_stun_urls(), csv_string("ROOM_ICE_STUNURLS", DEFAULT_ICE_STUNURLS)),
             },
             turn: parse_turn()?,
             log: LogConfig {
@@ -122,7 +122,16 @@ impl Config {
         }
 
         match &self.turn {
-            TurnConfig::Disabled => {}
+            TurnConfig::Disabled => {
+                let public_turn_urls = default_public_turn_urls();
+                if !public_turn_urls.is_empty() {
+                    servers.push(IceServer {
+                        urls: public_turn_urls,
+                        username: None,
+                        credential: None,
+                    });
+                }
+            }
             TurnConfig::Static {
                 urls,
                 username,
@@ -246,6 +255,34 @@ fn normalize_path(input: String) -> String {
     } else {
         format!("/{}", trimmed.trim_end_matches('/'))
     }
+}
+
+fn default_public_stun_urls() -> Vec<String> {
+    vec![
+        "stun:stun.cloudflare.com:3478".to_string(),
+        "stun:stun.cloudflare.com:53".to_string(),
+        "stun:stun.l.google.com:19302".to_string(),
+        "stun:stun1.l.google.com:19302".to_string(),
+        "stun:stun2.l.google.com:19302".to_string(),
+    ]
+}
+
+fn default_public_turn_urls() -> Vec<String> {
+    vec![
+        "turn:openrelay.metered.ca:80".to_string(),
+        "turn:openrelay.metered.ca:443".to_string(),
+        "turn:openrelay.metered.ca:443?transport=tcp".to_string(),
+    ]
+}
+
+fn merge_unique_urls(defaults: Vec<String>, extras: Vec<String>) -> Vec<String> {
+    let mut merged = Vec::new();
+    for value in defaults.into_iter().chain(extras) {
+        if !merged.contains(&value) {
+            merged.push(value);
+        }
+    }
+    merged
 }
 
 fn unix_now() -> u64 {

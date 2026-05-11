@@ -22,14 +22,16 @@ services:
       - turn
 
   turn:
-    image: coturn/coturn:4.6.3
-    command:
-      - -c
-      - /etc/coturn/turnserver.conf
-    volumes:
-      - ./coturn/turnserver.conf:/etc/coturn/turnserver.conf:ro
+    image: room-turn:local
+    build:
+      context: ../turn
+    environment:
+      ROOM_TURN_LISTEN: 0.0.0.0:3478
+      ROOM_TURN_EXTERNAL: 127.0.0.1:3478
+      ROOM_TURN_REALM: sharedesk
+      ROOM_TURN_SECRET: replace-with-coturn-static-auth-secret
+      ROOM_TURN_PORTRANGE: 49152..49200
     ports:
       - "3478:3478/tcp"
       - "3478:3478/udp"
-      - "5349:5349/tcp"
       - "49160-49200:49160-49200/udp"

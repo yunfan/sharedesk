@@ -5,8 +5,9 @@
 目录已经拆开：
 
 - `server/`：独立 Rust 服务端
+- `turn/`：独立 Rust TURN/STUN 服务
 - `client/`：独立静态前端
-- `deploy/`：coturn 与 compose 示例
+- `deploy/`：compose 示例
 
 这不是 Galene 的完整 Rust 重写，而是针对“匿名共享桌面”场景裁剪过的 MVP。
 
@@ -26,7 +27,9 @@
 - WebSocket 信令
 - 支持 STUN
 - 支持静态 TURN 凭据
-- 支持 coturn REST 风格临时 TURN 凭据
+- 支持 Rust TURN/STUN 服务
+- 支持 TURN REST 风格临时凭据
+- 默认内置若干匿名免费公共 ICE 候选，并追加环境变量里显式配置的地址
 
 ## 路由
 
@@ -50,6 +53,26 @@ make dist
 
 ```text
 client/dist
+```
+
+## TURN 构建
+
+```bash
+cd turn
+cargo run
+```
+
+Linux musl 静态构建：
+
+```bash
+cd turn
+./scripts/build-musl.sh
+```
+
+输出目录：
+
+```text
+turn/dist
 ```
 
 ## 服务端运行
@@ -92,11 +115,36 @@ ROOM_领域_配置项
 - `ROOM_TURN_PASSWORD`
 - `ROOM_TURN_SECRET`
 - `ROOM_TURN_TTLSECONDS`
+- `ROOM_TURN_LISTEN`
+- `ROOM_TURN_EXTERNAL`
+- `ROOM_TURN_REALM`
+- `ROOM_TURN_PORTRANGE`
 - `ROOM_LOG_FILTER`
+
+其中 TURN 服务自身主要读取：
+
+- `ROOM_TURN_LISTEN`
+- `ROOM_TURN_EXTERNAL`
+- `ROOM_TURN_REALM`
+- `ROOM_TURN_SECRET`
+- `ROOM_TURN_USERNAME`
+- `ROOM_TURN_PASSWORD`
+- `ROOM_TURN_PORTRANGE`
 
 默认值集中定义在：
 
 - [`server/src/config.rs`](</home/jyf/work/codetool/repo/rust-anon-desktop-share/rustdesk-share/server/src/config.rs>)
+
+默认 ICE 策略：
+
+- 默认内置多个公开匿名 STUN 候选
+- 当 `ROOM_TURN_MODE=disabled` 时，会额外尝试内置匿名公共 TURN 候选
+- 如果你通过 `ROOM_ICE_STUNURLS` 或 `ROOM_TURN_URLS` 显式配置地址，这些地址会追加进默认集合
+
+注意：
+
+- 这些公共免费节点仅适合“尽量一试”的匿名默认项，不保证中国大陆长期可用
+- 代码默认包含的匿名公共 TURN 仅用于兜底测试，不建议作为生产依赖
 
 ## 当前控制模型
 
@@ -130,13 +178,13 @@ docker compose up --build
 它会启动：
 
 - Rust 信令站点
-- `coturn` TURN 服务
+- Rust TURN/STUN 服务
 
 部署前请至少修改：
 
 - `ROOM_WEB_PUBLICBASE`
 - `ROOM_TURN_SECRET`
-- `deploy/coturn/turnserver.conf` 里的 `static-auth-secret`
+- `ROOM_TURN_EXTERNAL`
 - 反向代理和 TLS
 
 ## Caddy
