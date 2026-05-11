@@ -9,8 +9,7 @@ share.example.com {
 	@backend path /backend/*
 	reverse_proxy @backend 127.0.0.1:38080
 
-	@frontend path / /room/* /assets/*
-	reverse_proxy @frontend 127.0.0.1:38080
-
-	reverse_proxy 127.0.0.1:38080
+	root * ./client/dist
+	try_files {path} {path}/ /index.html
+	file_server
 }

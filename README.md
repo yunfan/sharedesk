@@ -82,13 +82,8 @@ cd server
 cargo run
 ```
 
-服务端默认会读取：
-
-```text
-../client/dist
-```
-
-作为静态资源目录。
+这个服务端只负责 `/backend/*`，不再托管前端静态文件。
+前端静态文件应由 Caddy 直接从 `client/dist` 提供。
 
 ## 服务端配置
 
@@ -105,8 +100,6 @@ ROOM_领域_配置项
 - `ROOM_SERVER_LISTEN`
 - `ROOM_SERVER_ORIGINANY`
 - `ROOM_SERVER_MAXONLINE`
-- `ROOM_WEB_PUBLICBASE`
-- `ROOM_WEB_STATICDIR`
 - `ROOM_WEB_BACKENDBASE`
 - `ROOM_ICE_STUNURLS`
 - `ROOM_TURN_MODE`
@@ -182,7 +175,6 @@ docker compose up --build
 
 部署前请至少修改：
 
-- `ROOM_WEB_PUBLICBASE`
 - `ROOM_TURN_SECRET`
 - `ROOM_TURN_EXTERNAL`
 - 反向代理和 TLS
@@ -191,7 +183,7 @@ docker compose up --build
 
 仓库根目录提供了 [`Caddyfile`](</home/jyf/work/codetool/repo/rust-anon-desktop-share/rustdesk-share/Caddyfile>)，默认把：
 
-- `/`、`/room/*`、`/assets/*` 代理给前端页面入口
+- `/`、`/room/*`、`/assets/*` 直接从 `client/dist` 提供
 - `/backend/*` 代理给后端 API 和 WebSocket
 
 把 `share.example.com` 改成你的真实域名即可。

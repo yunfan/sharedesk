@@ -6,7 +6,7 @@ use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{Path, Query, State};
 use axum::http::header::{HOST, ORIGIN};
 use axum::http::{HeaderMap, StatusCode};
-use axum::response::{Html, IntoResponse, Response};
+use axum::response::{IntoResponse, Response};
 use axum::Json;
 use serde::Deserialize;
 use serde_json::json;
@@ -21,20 +21,6 @@ use crate::room::{AppState, JoinRequest, KickRequest, PeerRole, ServerEvent, Sig
 pub struct SharedState {
     pub config: Arc<Config>,
     pub rooms: AppState,
-}
-
-pub async fn landing_page(State(state): State<SharedState>) -> Html<String> {
-    let base = state
-        .config
-        .web
-        .publicbase
-        .clone()
-        .unwrap_or_else(|| "".to_string());
-    Html(render_landing_page(&base))
-}
-
-pub async fn room_page(Path(room): Path<String>) -> Html<String> {
-    Html(render_room_page(&room))
 }
 
 pub async fn room_info(
@@ -394,136 +380,4 @@ fn normalized_client_token(input: Option<String>) -> String {
     } else {
         token
     }
-}
-
-fn render_landing_page(base: &str) -> String {
-    format!(
-        r#"<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Room Share</title>
-    <link rel="stylesheet" href="/assets/style.css">
-  </head>
-  <body class="landing">
-    <main class="shell">
-      <section class="hero-card">
-        <p class="eyebrow">Anonymous WebRTC desktop share</p>
-        <h1>Share a screen with a room link.</h1>
-        <p class="lede">Rust server, P2P WebRTC delivery, password-controlled rooms, host moderation, and lightweight static client deployment.</p>
-        <form class="room-form">
-          <label class="field">
-            <span>Room ID</span>
-            <input id="room-input" autocomplete="off" spellcheck="false" placeholder="design-review-7" maxlength="64">
-          </label>
-          <div class="actions">
-            <button type="button" id="host-btn">Open as host</button>
-            <button type="button" id="viewer-btn" class="secondary">Open as viewer</button>
-          </div>
-        </form>
-        <div class="meta">
-          <span>Base URL: {base}</span>
-          <span>Server config comes from `ROOM_*` env vars.</span>
-        </div>
-      </section>
-    </main>
-    <script>
-      const input = document.getElementById('room-input');
-      const slug = () => Math.random().toString(36).slice(2, 10);
-      if (!input.value) input.value = slug();
-      document.getElementById('host-btn').onclick = () => {{
-        location.href = `/room/${{encodeURIComponent(input.value || slug())}}?role=host`;
-      }};
-      document.getElementById('viewer-btn').onclick = () => {{
-        location.href = `/room/${{encodeURIComponent(input.value || slug())}}?role=viewer`;
-      }};
-    </script>
-  </body>
-</html>"#
-    )
-}
-
-fn render_room_page(room: &str) -> String {
-    format!(
-        r#"<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Room {room}</title>
-    <link rel="stylesheet" href="/assets/style.css">
-  </head>
-  <body data-room="{room}">
-    <main class="room-shell">
-      <section class="room-header">
-        <div>
-          <p class="eyebrow">Room</p>
-          <h1>{room}</h1>
-        </div>
-        <div class="header-actions">
-          <button id="copy-link" class="secondary">Copy viewer link</button>
-          <a href="/" class="secondary link-button">New room</a>
-        </div>
-      </section>
-
-      <section class="control-card">
-        <div class="field">
-          <span>Display name</span>
-          <input id="display-name" autocomplete="off" maxlength="48" placeholder="guest">
-        </div>
-        <div class="field">
-          <span>Join password</span>
-          <input id="join-password" type="password" autocomplete="off" maxlength="64" placeholder="optional for host, required for viewer">
-        </div>
-        <div class="field">
-          <span>Backend URL</span>
-          <input id="backend-url" autocomplete="off" maxlength="256" placeholder="https://share.example.com/backend">
-        </div>
-        <div class="field checkbox-field">
-          <label><input id="use-turn" type="checkbox" checked> Use TURN relay candidates</label>
-        </div>
-        <div class="role-grid">
-          <label><input type="radio" name="role" value="host"> Host</label>
-          <label><input type="radio" name="role" value="viewer"> Viewer</label>
-        </div>
-        <div class="actions">
-          <button id="connect-btn">Connect</button>
-          <button id="share-btn" class="secondary" disabled>Start screen capture</button>
-          <button id="set-password-btn" class="secondary" disabled>Update join password</button>
-        </div>
-        <p id="status" class="status">Idle</p>
-      </section>
-
-      <section class="layout">
-        <div class="video-card">
-          <video id="remote-video" autoplay playsinline controls></video>
-          <video id="local-preview" autoplay playsinline muted></video>
-        </div>
-        <aside class="side-card">
-          <h2>Endpoint model</h2>
-          <ul class="notes">
-            <li>Frontend page paths stay on the public site.</li>
-            <li>Backend uses one distinct base path for API and WebSocket calls.</li>
-            <li>Default backend URL can be set by `VITE_BACKEND_URL`.</li>
-          </ul>
-          <h2>Participants</h2>
-          <div id="participants" class="participants"></div>
-          <h2>Connection status</h2>
-          <div id="connection-stats" class="participants"></div>
-          <h2>Room notes</h2>
-          <ul class="notes">
-            <li>Single host per room.</li>
-            <li>Password changes only affect future joins.</li>
-            <li>Host can kick and ban by token or network fingerprint.</li>
-          </ul>
-          <pre id="log" class="log"></pre>
-        </aside>
-      </section>
-    </main>
-    <script src="/assets/config.js"></script>
-    <script type="module" src="/assets/app.js"></script>
-  </body>
-</html>"#
-    )
 }

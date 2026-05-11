@@ -1,4 +1,4 @@
-const room = document.body.dataset.room;
+const room = resolveRoomId();
 const params = new URLSearchParams(location.search);
 const initialRole = params.get("role") === "host" ? "host" : "viewer";
 
@@ -17,6 +17,7 @@ const displayNameInput = document.getElementById("display-name");
 const joinPasswordInput = document.getElementById("join-password");
 const backendUrlInput = document.getElementById("backend-url");
 const useTurnInput = document.getElementById("use-turn");
+const roomTitleEl = document.getElementById("room-title");
 
 let socket;
 let selfId;
@@ -40,6 +41,8 @@ for (const input of roleInputs) {
 displayNameInput.value = localStorage.getItem(DISPLAY_NAME_KEY) || "";
 backendUrlInput.value = localStorage.getItem(BACKEND_URL_KEY) || DEFAULT_BACKEND_URL || location.origin;
 useTurnInput.checked = localStorage.getItem(USE_TURN_KEY) !== "false";
+document.body.dataset.room = room;
+roomTitleEl.textContent = room;
 
 function log(message) {
   const line = `[${new Date().toLocaleTimeString()}] ${message}`;
@@ -49,6 +52,14 @@ function log(message) {
 
 function selectedRole() {
   return roleInputs.find((input) => input.checked)?.value || "viewer";
+}
+
+function resolveRoomId() {
+  const pathMatch = location.pathname.match(/^\/room\/([^/]+)/);
+  if (pathMatch?.[1]) {
+    return decodeURIComponent(pathMatch[1]);
+  }
+  return "public";
 }
 
 function clientToken() {

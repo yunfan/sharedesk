@@ -1,7 +1,5 @@
 use std::env;
 use std::net::SocketAddr;
-use std::path::PathBuf;
-
 use anyhow::{Context, Result};
 use base64::Engine;
 use hmac::{Hmac, Mac};
@@ -13,8 +11,6 @@ type HmacSha1 = Hmac<Sha1>;
 const DEFAULT_SERVER_LISTEN: &str = "0.0.0.0:38080";
 const DEFAULT_SERVER_ORIGINANY: bool = false;
 const DEFAULT_SERVER_MAXONLINE: usize = 200;
-const DEFAULT_WEB_PUBLICBASE: &str = "";
-const DEFAULT_WEB_STATICDIR: &str = "../client/dist";
 const DEFAULT_WEB_BACKENDBASE: &str = "/backend";
 const DEFAULT_ICE_STUNURLS: &str = "";
 const DEFAULT_TURN_MODE: &str = "disabled";
@@ -43,8 +39,6 @@ pub struct ServerConfig {
 
 #[derive(Clone, Debug)]
 pub struct WebConfig {
-    pub publicbase: Option<String>,
-    pub staticdir: PathBuf,
     pub backendbase: String,
 }
 
@@ -93,8 +87,6 @@ impl Config {
                 maxonline: env_usize("ROOM_SERVER_MAXONLINE", DEFAULT_SERVER_MAXONLINE)?,
             },
             web: WebConfig {
-                publicbase: option_string("ROOM_WEB_PUBLICBASE", DEFAULT_WEB_PUBLICBASE),
-                staticdir: PathBuf::from(env_string("ROOM_WEB_STATICDIR", DEFAULT_WEB_STATICDIR)),
                 backendbase: normalize_path(env_string(
                     "ROOM_WEB_BACKENDBASE",
                     DEFAULT_WEB_BACKENDBASE,
@@ -188,15 +180,6 @@ fn parse_turn() -> Result<TurnConfig> {
 
 fn env_string(name: &str, default: &str) -> String {
     env::var(name).unwrap_or_else(|_| default.to_string())
-}
-
-fn option_string(name: &str, default: &str) -> Option<String> {
-    let value = env_string(name, default);
-    if value.trim().is_empty() {
-        None
-    } else {
-        Some(value)
-    }
 }
 
 fn csv_string(name: &str, default: &str) -> Vec<String> {
