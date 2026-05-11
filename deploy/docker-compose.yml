@@ -1,0 +1,35 @@
+services:
+  app:
+    image: room-server:local
+    build:
+      context: ../server
+    environment:
+      ROOM_SERVER_LISTEN: 0.0.0.0:38080
+      ROOM_SERVER_ORIGINANY: "true"
+      ROOM_SERVER_MAXONLINE: 200
+      ROOM_WEB_PUBLICBASE: https://share.example.com
+      ROOM_WEB_STATICDIR: /app/client-dist
+      ROOM_ICE_STUNURLS: stun:turn:3478
+      ROOM_TURN_MODE: coturnrest
+      ROOM_TURN_URLS: turn:turn:3478?transport=udp,turn:turn:3478?transport=tcp
+      ROOM_TURN_SECRET: replace-with-coturn-static-auth-secret
+      ROOM_TURN_TTLSECONDS: 3600
+    ports:
+      - "38080:38080"
+    volumes:
+      - ../client/dist:/app/client-dist:ro
+    depends_on:
+      - turn
+
+  turn:
+    image: coturn/coturn:4.6.3
+    command:
+      - -c
+      - /etc/coturn/turnserver.conf
+    volumes:
+      - ./coturn/turnserver.conf:/etc/coturn/turnserver.conf:ro
+    ports:
+      - "3478:3478/tcp"
+      - "3478:3478/udp"
+      - "5349:5349/tcp"
+      - "49160-49200:49160-49200/udp"

@@ -1,0 +1,245 @@
+:root {
+  --bg: #f2efe8;
+  --panel: rgba(255, 252, 245, 0.78);
+  --text: #1f2520;
+  --muted: #5b635c;
+  --accent: #0d6b50;
+  --accent-soft: #cde6db;
+  --border: rgba(31, 37, 32, 0.1);
+  --shadow: 0 24px 60px rgba(38, 40, 33, 0.14);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  color: var(--text);
+  background:
+    radial-gradient(circle at top left, rgba(13, 107, 80, 0.15), transparent 30%),
+    radial-gradient(circle at bottom right, rgba(216, 130, 67, 0.22), transparent 30%),
+    linear-gradient(160deg, #f8f4ed 0%, #ece6db 100%);
+  font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+}
+
+button,
+.link-button {
+  border: 0;
+  border-radius: 999px;
+  padding: 0.9rem 1.3rem;
+  background: var(--accent);
+  color: white;
+  cursor: pointer;
+  text-decoration: none;
+  font: inherit;
+}
+
+button.secondary,
+.link-button.secondary {
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.landing,
+.room-shell {
+  padding: 2rem;
+}
+
+.shell,
+.room-shell {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.hero-card,
+.control-card,
+.video-card,
+.side-card {
+  backdrop-filter: blur(14px);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+}
+
+.hero-card {
+  padding: 3rem;
+  border-radius: 32px;
+  margin-top: 8vh;
+}
+
+.hero-card h1,
+.room-header h1 {
+  margin: 0.2rem 0 1rem;
+  font-family: "IBM Plex Serif", Georgia, serif;
+  font-size: clamp(2.5rem, 6vw, 4.6rem);
+  line-height: 0.95;
+}
+
+.eyebrow {
+  margin: 0;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.lede {
+  max-width: 56rem;
+  color: var(--muted);
+  font-size: 1.1rem;
+  line-height: 1.6;
+}
+
+.room-form,
+.actions,
+.role-grid,
+.header-actions {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.field {
+  display: grid;
+  gap: 0.45rem;
+  min-width: min(100%, 420px);
+}
+
+.field input {
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 1rem 1.1rem;
+  background: rgba(255, 255, 255, 0.8);
+  font: inherit;
+}
+
+.meta {
+  display: flex;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+  margin-top: 1.25rem;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+.room-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: end;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.control-card {
+  padding: 1.2rem;
+  border-radius: 24px;
+  margin-bottom: 1rem;
+}
+
+.status {
+  margin: 0.8rem 0 0;
+  color: var(--muted);
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 2.3fr) minmax(300px, 1fr);
+  gap: 1rem;
+}
+
+.video-card,
+.side-card {
+  border-radius: 28px;
+  padding: 1rem;
+}
+
+.video-card {
+  display: grid;
+  gap: 1rem;
+}
+
+video {
+  width: 100%;
+  min-height: 240px;
+  background: #111;
+  border-radius: 18px;
+}
+
+#local-preview {
+  min-height: 140px;
+  max-width: 360px;
+  justify-self: end;
+}
+
+.notes {
+  padding-left: 1.2rem;
+  color: var(--muted);
+}
+
+.participants {
+  display: grid;
+  gap: 0.8rem;
+  margin-bottom: 1rem;
+}
+
+.participant-card {
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 0.9rem;
+  background: rgba(255, 255, 255, 0.65);
+}
+
+.participant-title {
+  font-weight: 600;
+}
+
+.participant-role,
+.participant-meta,
+.participant-empty {
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.participant-actions {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin-top: 0.75rem;
+}
+
+.log {
+  min-height: 260px;
+  padding: 1rem;
+  overflow: auto;
+  border-radius: 18px;
+  background: rgba(29, 33, 31, 0.92);
+  color: #c8ffd8;
+}
+
+@media (max-width: 900px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+
+  .room-header {
+    align-items: start;
+    flex-direction: column;
+  }
+
+  .landing,
+  .room-shell {
+    padding: 1rem;
+  }
+
+  .hero-card {
+    padding: 1.4rem;
+    border-radius: 24px;
+  }
+}
